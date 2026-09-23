@@ -1,12 +1,9 @@
 Label,Hot Cue,Color,Label,Memory Cue
 A,First Beat,Green,1,First Beat
-B,Loop In,Green,2,Loop In
-C,Vocal / Buildup,Yellow,3,Before Buildup
-D,Drop,Red,4,Before Drop
-E,Breakdown,Blue,5,Before Breakdown
-F,Special,Purple,6,Before Special
-G,Outro,Cyan,7,Before Outro
-H,Loop Out,Orange,8,Loop Out
-,,,,
-,,,,
- ,,,,
+B,Bassline Introduction,Green,2,Bassline Introduction
+C,First Breakdown,Blue,3,First Breakdown
+D,8 Beats Before Main Drop,Orange,4,8 Beats Before Main Drop
+E,Main Breakdown,Blue,5,Main Breakdown
+F,32 Beats Before Main Drop,Orange,6,32 Beats Before Main Drop
+G,Main Drop,Red,7,Main Drop
+H,Final Drop / Outro,Blue,8,Final Drop / Outro

@@ -26,18 +26,18 @@ djcues <command>
 
 djcues uses a standardized 8 hot cue + 8 memory cue system defined in `cue-system.csv`:
 
-| Pad | Hot Cue         | Color  | Memory Cue       |
-|-----|-----------------|--------|-------------------|
-| A   | First Beat      | Green  | First Beat        |
-| B   | Loop In         | Green  | Loop In           |
-| C   | Vocal / Buildup | Yellow | Before Buildup    |
-| D   | Drop            | Red    | Before Drop       |
-| E   | Breakdown       | Blue   | Before Breakdown  |
-| F   | Special         | Purple | Before Special    |
-| G   | Outro           | Cyan   | Before Outro      |
-| H   | Loop Out        | Orange | Loop Out          |
+| Pad | Hot Cue | Color | Purpose |
+|-----|---------|-------|---------|
+| A | First Beat | Green | True start of the track |
+| B | Bassline Introduction | Green | Start mixing when the bass enters |
+| C | First Breakdown | Blue | First breakdown / buildup reference |
+| D | 8 Beats Before Main Drop | Orange | Waypoint before the main drop |
+| E | Main Breakdown | Blue | Start a second track for a double drop |
+| F | 32 Beats Before Main Drop | Orange | Phrase-aligned mix/acapella waypoint |
+| G | Main Drop | Red | Main energy peak |
+| H | Final Drop / Outro | Blue | Final big moment / mix-out point |
 
-Memory cues 3-7 are placed a configurable number of bars before their corresponding hot cue (default: 16 bars). Memory cues 1, 2, and 8 share the same position as their hot cue. Colors are standardized per slot.
+Memory cues 3-7 are placed a configurable number of bars before their corresponding hot cue (default: 16 bars). Memory cues 1, 2, and 8 share the same position as their hot cue. The two pre-drop markers are exact beat-grid offsets: D is 8 beats before G and F is 32 beats before G. Colors are standardized per slot.
 
 To customize the cue system, edit `cue-system.csv` and update the `CUE_SYSTEM` definition in `src/djcues/constants.py`.
 
@@ -138,3 +138,11 @@ BSD 3-Clause. See [LICENSE](LICENSE).
 Under the hood, djcues leverages [pyrekordbox](https://pyrekordbox.readthedocs.io) to interact with the [Rekordbox](https://rekordbox.com) database. It also makes extensive use of [analysis files](https://pyrekordbox.readthedocs.io/en/latest/formats/anlz.html#) from Rekordbox. Other dependencies include [click](https://click.palletsprojects.com/en/stable/) and [pytest](https://docs.pytest.org/en/stable/).
 
 This project was created in fleeting free moments with the help of [Claude Opus 4.6](https://www.anthropic.com/news/claude-opus-4-6) and [Superpowers](https://github.com/obra/superpowers).
+
+### Cue-Farblegende
+
+- **Rot:** Drop / größter Energiepunkt
+- **Grün:** Intro / Mix-in / Start
+- **Blau:** Breakdown oder Outro
+- **Gelb/Orange:** Build-up / Vorbereitung
+- **Lila:** Breakdown, Vocal oder spezielle Cue (Reservefarbe)
