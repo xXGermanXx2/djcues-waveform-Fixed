@@ -147,10 +147,81 @@ def _print_comparison(proposal, track):
     return matches, total
 
 
-@click.group()
-def cli():
+def _menu_scope() -> tuple[str, str | None, bool]:
+    """Ask for playlist and either a track name or all tracks."""
+    playlist = click.prompt("Playlist name")
+    all_tracks = click.confirm("Process all tracks?", default=True)
+    track_name = None if all_tracks else click.prompt("Track name")
+    return playlist, track_name, all_tracks
+
+
+def _run_menu() -> None:
+    """Run the beginner-friendly interactive command menu."""
+    while True:
+        click.clear()
+        click.echo("djcues — Rekordbox Cue Assistant")
+        click.echo("=" * 38)
+        click.echo("1) Cue-Vorschläge anzeigen")
+        click.echo("2) Bestehende Cues vergleichen")
+        click.echo("3) Visualisierung im Browser öffnen")
+        click.echo("4) Cues im Browser prüfen/anpassen")
+        click.echo("5) Review-Session anwenden")
+        click.echo("6) Beenden")
+        click.echo()
+
+        try:
+            choice = click.prompt("Auswahl", type=click.Choice(["1", "2", "3", "4", "5", "6"]))
+            if choice == "6":
+                click.echo("Auf Wiedersehen.")
+                return
+
+            if choice == "5":
+                session_file = click.prompt("Pfad zur Session-Datei", type=click.Path(exists=True, dir_okay=False))
+                dry_run = click.confirm("Nur testen (Dry Run)?", default=True)
+                force = False if dry_run else click.confirm("Vorhandene Cues ohne weitere Rückfrage überschreiben?", default=False)
+                apply.callback(session_file, dry_run, force)
+            else:
+                playlist, track_name, all_tracks = _menu_scope()
+                offset = click.prompt("Memory-Cue-Abstand in Takten", default=16, type=int)
+                loop_bars = click.prompt("Loop-Länge in Takten", default=4, type=int)
+
+                if choice == "1":
+                    propose.callback(playlist, track_name, all_tracks, offset, loop_bars)
+                elif choice == "2":
+                    compare.callback(playlist, track_name, all_tracks, offset, loop_bars)
+                elif choice == "3":
+                    compare_mode = click.confirm("Bestehende und vorgeschlagene Cues vergleichen?", default=False)
+                    output = click.prompt("Ausgabedatei (leer = automatisch)", default="", show_default=False) or None
+                    viz.callback(playlist, track_name, all_tracks, compare_mode, offset, loop_bars, output)
+                elif choice == "4":
+                    output = click.prompt("Ausgabeordner (leer = aktueller Ordner)", default="", show_default=False) or None
+                    review.callback(playlist, track_name, all_tracks, offset, loop_bars, output)
+
+            click.echo()
+            click.pause("Enter drücken, um zum Menü zurückzukehren")
+        except (click.Abort, KeyboardInterrupt):
+            click.echo("\nMenü beendet.")
+            return
+        except (click.ClickException, SystemExit) as exc:
+            if isinstance(exc, click.ClickException):
+                click.echo(f"Fehler: {exc}", err=True)
+            else:
+                click.echo("Der Vorgang konnte nicht abgeschlossen werden.", err=True)
+            click.pause("Enter drücken, um zum Menü zurückzukehren")
+
+
+@click.group(invoke_without_command=True)
+@click.pass_context
+def cli(ctx):
     """djcues — automated rekordbox cue placement based on phrase analysis."""
-    pass
+    if ctx.invoked_subcommand is None:
+        _run_menu()
+
+
+@cli.command("menu")
+def menu():
+    """Open the interactive terminal menu."""
+    _run_menu()
 
 
 @cli.command()

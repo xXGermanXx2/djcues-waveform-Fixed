@@ -43,6 +43,18 @@ To customize the cue system, edit `cue-system.csv` and update the `CUE_SYSTEM` d
 
 ## Usage
 
+### Interactive terminal menu
+
+Start `djcues` without a subcommand to open the guided terminal menu. It lets you choose proposal, comparison, visualization, browser review, and session apply without typing the full command. The explicit menu command is also available:
+
+```bash
+uv run djcues
+# or
+uv run djcues menu
+```
+
+Use option **6** to exit the menu. The original command-line interface remains available for scripted use.
+
 ### Preview cues for a track
 
 ```bash
