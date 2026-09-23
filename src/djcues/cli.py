@@ -13,7 +13,7 @@ for _name in ("pyrekordbox", "pyrekordbox.db6", "pyrekordbox.anlz"):
 warnings.filterwarnings("ignore", module="pyrekordbox")
 
 from djcues.constants import CUE_SYSTEM_BY_PAD, KIND_TO_PAD
-from djcues.db import find_playlist, load_playlist_tracks
+from djcues.db import find_playlist, get_db, load_playlist_tracks
 from djcues.strategy import CueStrategy
 
 
@@ -147,12 +147,41 @@ def _print_comparison(proposal, track):
     return matches, total
 
 
+def _menu_choice(title: str, values: list[str]) -> int:
+    """Show numbered values and return a zero-based selection."""
+    click.echo(f"\n{title}")
+    click.echo("-" * len(title))
+    for index, value in enumerate(values, start=1):
+        click.echo(f"{index}) {value}")
+    return click.prompt("Auswahl", type=click.IntRange(1, len(values))) - 1
+
+
 def _menu_scope() -> tuple[str, str | None, bool]:
-    """Ask for playlist and either a track name or all tracks."""
-    playlist = click.prompt("Playlist name")
-    all_tracks = click.confirm("Process all tracks?", default=True)
-    track_name = None if all_tracks else click.prompt("Track name")
-    return playlist, track_name, all_tracks
+    """Select a playlist and then all tracks or one track from that playlist."""
+    try:
+        playlists = [
+            pl for pl in get_db().get_playlist()
+            if pl.Attribute != 1 and getattr(pl, "Name", None)
+        ]
+        playlist_names = list(dict.fromkeys(pl.Name for pl in playlists))
+    except Exception:
+        playlist_names = []
+
+    if playlist_names:
+        playlist = playlist_names[_menu_choice("Playlist auswählen", playlist_names)]
+    else:
+        click.echo("Keine Playlists konnten automatisch gelesen werden.")
+        playlist = click.prompt("Playlist-Name")
+
+    tracks = load_playlist_tracks(find_playlist(playlist).ID)
+    if not tracks:
+        raise click.ClickException(f"Playlist '{playlist}' enthält keine Tracks.")
+
+    track_options = ["Alle Tracks"] + [f"{t.title} — {t.artist}" for t in tracks]
+    track_index = _menu_choice("Tracks auswählen", track_options)
+    if track_index == 0:
+        return playlist, None, True
+    return playlist, tracks[track_index - 1].title, False
 
 
 def _run_menu() -> None:
