@@ -101,11 +101,15 @@ djcues compare "Processed" --all
 
 ## How It Works
 
+### Rekordbox 6/7 Waveforms
+
+Waveforms are decoded directly from the ANLZ tag framing instead of requiring the complete analysis file to be parsed successfully by one library schema. The visualizer supports the detailed color formats `PWV5` from `.EXT` files and `PWV7` from `.2EX` files, as well as `PWV3`, `PWV4`, and `PWV6` fallbacks. This keeps tracks usable when Rekordbox writes a newer tag variant or when an unrelated analysis tag has an invalid length.
+
 1. **Phrase analysis (PSSI)**: rekordbox analyzes tracks into phrases (Intro, Up, Down, Chorus, Outro). djcues maps these to cue slots using heuristics — e.g., Drop aligns with the first Chorus after 20% of the track.
 
 2. **Vocal detection (PVDI)**: rekordbox's vocal detection data (stored in `.2EX` ANLZ files) provides per-frame vocal confidence. djcues uses the first strong vocal onset to place the Vocal/Buildup cue.
 
-3. **Waveform (PWV5)**: The color waveform detail data is extracted and rendered in the HTML visualizer for visual reference.
+3. **Waveform (PWV3–PWV7)**: Color and three-band waveform data is extracted from the available ANLZ variant and rendered in the HTML visualizer for visual reference.
 
 4. **Beat grid**: All cue positions are snapped to the beat grid for precise alignment.
 

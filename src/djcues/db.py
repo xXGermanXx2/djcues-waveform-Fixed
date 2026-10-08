@@ -126,35 +126,136 @@ def _extract_cues(track_content: Any) -> list[CuePoint]:
 
 
 def _extract_waveform(track_content: Any, max_points: int = 800) -> list[WaveformPoint] | None:
-    """Extract color waveform from PWV5 tag, downsampled for display."""
+    """Extract waveforms from Rekordbox 6/7 ANLZ files.
+
+    The complete pyrekordbox Construct parser can fail on one newer or
+    malformed tag and then hide all other tags. We therefore scan the raw
+    ANLZ framing and decode PWV3/PWV5 (EXT) plus PWV6/PWV7 (2EX) ourselves.
+    """
     db = get_db()
     try:
-        anlz_files = db.read_anlz_files(track_content)
-        for path, af in anlz_files.items():
-            if path.suffix == ".EXT":
-                for tag in af.tags:
-                    if type(tag).__name__ == "PWV5AnlzTag":
-                        heights, colors = tag.get()
-                        n = len(heights)
-                        step = max(1, n // max_points)
-                        points: list[WaveformPoint] = []
-                        for i in range(0, n, step):
-                            # Take max height in each chunk for peak representation
-                            chunk_end = min(i + step, n)
-                            peak_idx = i
-                            for j in range(i, chunk_end):
-                                if heights[j] > heights[peak_idx]:
-                                    peak_idx = j
-                            points.append(WaveformPoint(
-                                height=float(heights[peak_idx]),
-                                red=int(colors[peak_idx, 0]),
-                                green=int(colors[peak_idx, 1]),
-                                blue=int(colors[peak_idx, 2]),
-                            ))
-                        return points
+        # This only resolves paths; unlike read_anlz_files it does not parse
+        # every tag and survives a bad PWV5 block.
+        paths = db.get_anlz_paths(track_content)
+        for key in ("EXT", "2EX", "DAT"):
+            path = paths.get(key)
+            if path is None or not path.exists():
+                continue
+            points = _decode_waveform_file(path.read_bytes(), max_points)
+            if points:
+                return points
     except Exception as e:
         logger.warning("Could not read waveform for %s: %s", track_content.Title, e)
     return None
+
+
+def _decode_waveform_file(data: bytes, max_points: int = 800) -> list[WaveformPoint]:
+    """Decode waveform tags from raw ANLZ bytes without Construct parsing."""
+    import struct
+
+    points: list[WaveformPoint] = []
+    pos = 0
+    if data[:4] == b"ANLZ" and len(data) >= 8:
+        file_header_len = struct.unpack_from(">I", data, 4)[0]
+        if 12 <= file_header_len <= len(data):
+            pos = file_header_len
+    while pos + 12 <= len(data):
+        tag_type = data[pos : pos + 4]
+        if not tag_type.isascii():
+            pos += 1
+            continue
+        header_len, tag_len = struct.unpack_from(">II", data, pos + 4)
+        if header_len < 12 or tag_len < header_len or pos + tag_len > len(data):
+            # Recover from an invalid block and search for a later valid tag.
+            pos += 1
+            continue
+        if tag_type in (b"PWV3", b"PWV4", b"PWV5", b"PWV6", b"PWV7"):
+            points.extend(_decode_waveform_tag(tag_type.decode("ascii"), header_len, data[pos : pos + tag_len]))
+        pos += tag_len
+    return _downsample_waveform(points, max_points)
+
+
+def _decode_waveform_tag(tag_type: str, header_len: int, tag_data: bytes) -> list[WaveformPoint]:
+    """Decode one PWV tag, tolerating Rekordbox 6/7 header variants."""
+    import struct
+
+    if len(tag_data) < header_len:
+        return []
+    body = tag_data[header_len:]
+
+    if tag_type == "PWV5":
+        # Two-byte packed RGB/height entries. Trust payload size over a stale
+        # entry count found in some Rekordbox-generated files.
+        if len(body) >= 12:
+            declared = struct.unpack_from(">I", body, 0)[0]
+            usable_declared = declared * 2
+            body = body[12 : 12 + usable_declared] if usable_declared <= len(body) - 12 else body[12:]
+        usable = len(body) - (len(body) % 2)
+        return [
+            WaveformPoint(
+                height=((value >> 2) & 0x1F) / 31,
+                red=(value >> 12) & 0x07,
+                green=(value >> 9) & 0x07,
+                blue=(value >> 6) & 0x07,
+            )
+            for (value,) in struct.iter_unpack(">H", body[:usable])
+        ]
+
+    if tag_type == "PWV3":
+        body = body[12:] if len(body) >= 12 else b""
+        return [WaveformPoint(height=(value & 0x1F) / 31, red=1, green=2, blue=5) for value in body]
+
+    if tag_type == "PWV6":
+        body = body[8:] if len(body) >= 8 else b""
+        usable = len(body) - (len(body) % 3)
+        return [
+            WaveformPoint(
+                height=max(mid, high, low) / 255,
+                red=round(low / 255 * 7),
+                green=round(mid / 255 * 7),
+                blue=round(high / 255 * 7),
+            )
+            for mid, high, low in zip(body[:usable:3], body[1:usable:3], body[2:usable:3])
+        ]
+
+    if tag_type == "PWV7":
+        body = body[12:] if len(body) >= 12 else b""
+        usable = len(body) - (len(body) % 3)
+        return [
+            WaveformPoint(
+                height=max(mid, high, low) / 255,
+                red=round(low / 255 * 7),
+                green=round(mid / 255 * 7),
+                blue=round(high / 255 * 7),
+            )
+            for mid, high, low in zip(body[:usable:3], body[1:usable:3], body[2:usable:3])
+        ]
+
+    if tag_type == "PWV4":
+        body = body[12:] if len(body) >= 12 else b""
+        usable = len(body) - (len(body) % 6)
+        result: list[WaveformPoint] = []
+        for i in range(0, usable, 6):
+            _, d2, d3, d4, d5 = body[i + 1 : i + 6]
+            result.append(WaveformPoint(
+                height=max(d2, d3, d4, d5 & 0x7F) / 127,
+                red=round((d3 & 0x7F) / 127 * 7),
+                green=round((d4 & 0x7F) / 127 * 7),
+                blue=round((d5 & 0x7F) / 127 * 7),
+            ))
+        return result
+    return []
+
+
+def _downsample_waveform(points: list[WaveformPoint], max_points: int) -> list[WaveformPoint]:
+    """Keep peak points while limiting inline SVG size."""
+    if len(points) <= max_points:
+        return points
+    step = len(points) / max_points
+    return [
+        max(points[int(i * step) : max(int((i + 1) * step), int(i * step) + 1)], key=lambda point: point.height)
+        for i in range(max_points)
+    ]
 
 
 def _extract_vocal_track(track_content: Any) -> list[int] | None:
