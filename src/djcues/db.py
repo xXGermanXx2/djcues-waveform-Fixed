@@ -98,8 +98,79 @@ def _extract_phrases(track_content: Any, beat_grid: BeatGrid) -> list[Phrase]:
                             ))
                         break  # only process first PSSI tag
     except Exception as e:
-        logger.warning("Could not read phrases for %s: %s", track_content.Title, e)
+        logger.debug("Library PSSI parser failed for %s; trying raw decoder: %s", track_content.Title, e)
 
+    if not phrases:
+        try:
+            paths = db.get_anlz_paths(track_content)
+            path = paths.get("EXT")
+            if path is not None and path.exists():
+                phrases = _decode_phrase_file(path.read_bytes(), beat_grid)
+        except Exception as e:
+            logger.warning("Could not read phrases for %s: %s", track_content.Title, e)
+
+    return phrases
+
+
+def _decode_phrase_file(data: bytes, beat_grid: BeatGrid) -> list[Phrase]:
+    """Decode PSSI tags from raw ANLZ bytes without unrelated tag parsing."""
+    import struct
+
+    pos = 0
+    if data[:4] == b"ANLZ" and len(data) >= 8:
+        file_header_len = struct.unpack_from(">I", data, 4)[0]
+        if 12 <= file_header_len <= len(data):
+            pos = file_header_len
+
+    while pos + 12 <= len(data):
+        tag_type = data[pos : pos + 4]
+        if not tag_type.isascii():
+            pos += 1
+            continue
+        header_len, tag_len = struct.unpack_from(">II", data, pos + 4)
+        if header_len < 12 or tag_len < header_len or pos + tag_len > len(data):
+            pos += 1
+            continue
+        if tag_type == b"PSSI":
+            return _decode_phrase_tag(data[pos : pos + tag_len], header_len, beat_grid)
+        pos += tag_len
+    return []
+
+
+def _decode_phrase_tag(tag_data: bytes, header_len: int, beat_grid: BeatGrid) -> list[Phrase]:
+    """Decode one PSSI tag using its 24-byte entry records."""
+    import struct
+
+    content = tag_data[header_len:]
+    if len(content) < 20:
+        return []
+    entry_bytes, entry_count, mood = struct.unpack_from(">IHH", content, 0)
+    end_beat = struct.unpack_from(">H", content, 14)[0]
+    if entry_bytes < 24:
+        return []
+    available = (len(content) - 20) // entry_bytes
+    count = min(entry_count, available)
+    entries: list[tuple[int, int]] = []
+    for index in range(count):
+        offset = 20 + index * entry_bytes
+        beat, kind = struct.unpack_from(">HH", content, offset + 2)
+        entries.append((beat, kind))
+
+    phrases: list[Phrase] = []
+    for index, (beat, kind) in enumerate(entries):
+        next_beat = entries[index + 1][0] if index + 1 < len(entries) else end_beat
+        if next_beat <= beat:
+            continue
+        position_ms = beat_grid.beat_to_ms(beat)
+        end_ms = beat_grid.beat_to_ms(next_beat)
+        phrases.append(Phrase(
+            beat_start=beat,
+            beat_end=next_beat,
+            kind=kind,
+            label=resolve_phrase_label(mood, kind),
+            position_ms=position_ms,
+            duration_ms=end_ms - position_ms,
+        ))
     return phrases
 
 
